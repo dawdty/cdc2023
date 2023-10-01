@@ -4,44 +4,33 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-# Step 1: Load the data from the Excel file
-# Replace 'your_file.xlsx' with the actual file path
-file_path = 'your_file.xlsx'
+# Load your data from the CSV file
+file_path = 'scripts/data/edmund_data.csv'
+df = pd.read_csv(file_path)
 
-# Load the Excel file into a DataFrame
-df = pd.read_excel(file_path)
+# Define inputs based on your selected columns
+inputs = df[['LONGITUDE', 'LATITUDE', 'DISCOVERY_DATE']].values
 
-# Step 2: Preprocess the data
-# Assume that you have columns 'longitude', 'latitude', and 'date' in your DataFrame
-# Convert the date column to a numeric format (e.g., days since a reference date)
-df['date'] = pd.to_datetime(df['date'])
-reference_date = pd.to_datetime('2000-01-01')  # You can choose a different reference date
-df['date'] = (df['date'] - reference_date).dt.days
+# Create a new column 'FIRE_OCCURRENCE_COLUMN' and set it to 0 for all rows
+df['FIRE_OCCURRENCE_COLUMN'] = 0
 
-# Select the input features (longitude, latitude, date)
-selected_columns = ['LONGITUDE', 'LATITUDE', 'DATE']
-df = df[selected_columns]
+# Identify unique integer values in DISCOVERY_DATE
+unique_dates = df['DISCOVERY_DATE'].unique()
 
-# Define a function to calculate fire probability (you can replace this with your own logic)
-def calculate_fire_probability(row):
-    # Replace this with your logic for calculating fire probability based on longitude, latitude, and date
-    # For simplicity, we assume a fixed probability here
-    return 0.1
+# Generate a range of dates from 2000 to 2010 (integer intervals of 1)
+all_dates = np.arange(2000, 2011)
 
-# Apply the calculate_fire_probability function to create the target variable
-df['fire_probability'] = df.apply(calculate_fire_probability, axis=1)
+# Identify missing dates and set 'FIRE_OCCURRENCE_COLUMN' to 0 for those dates
+missing_dates = np.setdiff1d(all_dates, unique_dates)
+df.loc[df['DISCOVERY_DATE'].isin(missing_dates), 'FIRE_OCCURRENCE_COLUMN'] = 0
 
-# Convert the DataFrame to a numpy array
-data_array = df.to_numpy(dtype=np.float32)
+# Define labels based on 'FIRE_OCCURRENCE_COLUMN'
+labels = df['FIRE_OCCURRENCE_COLUMN'].values
 
-# Separate the input features (longitude, latitude, date) and target variable (fire probability)
-inputs = data_array[:, :-1]
-targets = data_array[:, -1]
-
-# Step 3: Create a PyTorch model
-class FireProbabilityModel(nn.Module):
+# Define a PyTorch model for binary classification
+class FireOccurrenceModel(nn.Module):
     def __init__(self, input_size):
-        super(FireProbabilityModel, self).__init__()
+        super(FireOccurrenceModel, self).__init__()
         self.fc1 = nn.Linear(input_size, 64)
         self.fc2 = nn.Linear(64, 1)
         self.sigmoid = nn.Sigmoid()
@@ -54,30 +43,29 @@ class FireProbabilityModel(nn.Module):
 
 # Create the model
 input_size = inputs.shape[1]
-model = FireProbabilityModel(input_size)
+model = FireOccurrenceModel(input_size)
 
-# Step 4: Define a loss function and an optimizer
+# Define loss function and optimizer
 criterion = nn.BCELoss()  # Binary Cross-Entropy Loss
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-# Step 5: Train the model
+# Training loop
 num_epochs = 1000
 for epoch in range(num_epochs):
-    optimizer.zero_grad()  # Zero the gradients
-    outputs = model(torch.tensor(inputs))  # Forward pass
-    loss = criterion(outputs, torch.tensor(targets).view(-1, 1))  # Calculate the loss
-    loss.backward()  # Backpropagation
-    optimizer.step()  # Update weights
-
+    optimizer.zero_grad()
+    outputs = model(torch.tensor(inputs, dtype=torch.float32))
+    loss = criterion(outputs.view(-1), torch.tensor(labels, dtype=torch.float32))
+    loss.backward()
+    optimizer.step()
+    
     if (epoch + 1) % 100 == 0:
         print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item():.4f}')
 
-# Step 6: Use the trained model to make predictions
+# Use the trained model to make predictions
 with torch.no_grad():
-    # Replace these values with the input values for prediction (longitude, latitude, date)
-    new_input = torch.tensor([input("Enter Longitude"), input("Enter Latitude"), input("Date")], dtype=torch.float32)
+    new_input = torch.tensor([float(input("Enter Longitude")), float(input("Enter Latitude")), float(input("Date"))], dtype=torch.float32)
     predicted_probability = model(new_input).item()
     print(f'Predicted Fire Probability: {predicted_probability:.4f}')
 
 # Save the model if needed
-torch.save(model.state_dict(), 'fire_probability_model.pth')
+torch.save(model.state_dict(), 'fire_occurrence_model.pth')
